@@ -8,7 +8,15 @@
 #include "macro.h"
 #include "label.h"
 
+#if HAVE_SELINUX
+#include <selinux/selinux.h>
+
+DEFINE_TRIVIAL_CLEANUP_FUNC(char*, freecon);
+#define _cleanup_freecon_ _cleanup_(freeconp)
+#endif
+
 bool mac_selinux_use(void);
+bool mac_selinux_enforcing(void);
 void mac_selinux_retest(void);
 
 int mac_selinux_init(void);

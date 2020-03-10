@@ -6,14 +6,11 @@
 #include <linux/ip.h>
 
 #include "conf-parser.h"
+#include "fou-tunnel.h"
 #include "ip-protocol-list.h"
-#include "missing.h"
-#include "netdev/fou-tunnel.h"
 #include "netlink-util.h"
-#include "networkd-link.h"
 #include "networkd-manager.h"
 #include "parse-util.h"
-#include "sd-netlink.h"
 #include "string-table.h"
 #include "string-util.h"
 #include "util.h"
@@ -265,7 +262,7 @@ static void fou_tunnel_init(NetDev *netdev) {
 const NetDevVTable foutnl_vtable = {
         .object_size = sizeof(FouTunnel),
         .init = fou_tunnel_init,
-        .sections = "Match\0NetDev\0FooOverUDP\0",
+        .sections = NETDEV_COMMON_SECTIONS "FooOverUDP\0",
         .create = netdev_fou_tunnel_create,
         .create_type = NETDEV_CREATE_INDEPENDENT,
         .config_verify = netdev_fou_tunnel_verify,

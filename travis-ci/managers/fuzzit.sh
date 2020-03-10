@@ -14,6 +14,8 @@ sudo bash -c "echo 'deb-src http://archive.ubuntu.com/ubuntu/ xenial main restri
 sudo apt-get update -y
 sudo apt-get build-dep systemd -y
 sudo apt-get install -y ninja-build python3-pip python3-setuptools
+# The following should be dropped when debian packaging has been updated to include them
+sudo apt-get install -y libfdisk-dev libp11-kit-dev libssl-dev libpwquality-dev
 pip3 install meson
 
 cd $REPO_ROOT
@@ -36,7 +38,7 @@ fi
 
 # Because we want Fuzzit to run on every pull-request and Travis/Azure doesnt support encrypted keys
 # on pull-request we use a write-only key which is ok for now. maybe there will be a better solution in the future
-FUZZIT_API_KEY=af6992074353998676713818cc6435ef4a750439932dab58b51e9354d6742c54d740a3cd9fc1fc001db82f51734a24bc
+export FUZZIT_API_KEY=af6992074353998676713818cc6435ef4a750439932dab58b51e9354d6742c54d740a3cd9fc1fc001db82f51734a24bc
 FUZZIT_ADDITIONAL_FILES="./out/src/shared/libsystemd-shared-*.so"
 
 # ASan options are borrowed almost verbatim from OSS-Fuzz
@@ -45,8 +47,6 @@ UBSAN_OPTIONS=print_stacktrace=1:print_summary=1:halt_on_error=1:silence_unsigne
 FUZZIT_ARGS="--type ${FUZZING_TYPE} --branch ${FUZZIT_BRANCH} --revision ${TRAVIS_COMMIT} -e ASAN_OPTIONS=${ASAN_OPTIONS} -e UBSAN_OPTIONS=${UBSAN_OPTIONS}"
 wget -O fuzzit https://github.com/fuzzitdev/fuzzit/releases/latest/download/fuzzit_Linux_x86_64
 chmod +x fuzzit
-
-./fuzzit auth ${FUZZIT_API_KEY}
 
 find out/ -maxdepth 1 -name 'fuzz-*' -executable -type f -exec basename '{}' \; | xargs --verbose -n1 -I%FUZZER% ./fuzzit create job ${FUZZIT_ARGS} %FUZZER%-asan-ubsan out/%FUZZER% ${FUZZIT_ADDITIONAL_FILES}
 

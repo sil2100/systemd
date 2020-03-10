@@ -75,6 +75,7 @@ enum JobMode {
         JOB_FLUSH,               /* Flush out all other queued jobs when queueing this one */
         JOB_IGNORE_DEPENDENCIES, /* Ignore both requirement and ordering dependencies */
         JOB_IGNORE_REQUIREMENTS, /* Ignore requirement dependencies */
+        JOB_TRIGGERING,          /* Adds TRIGGERED_BY dependencies to the same transaction */
         _JOB_MODE_MAX,
         _JOB_MODE_INVALID = -1
 };
@@ -195,7 +196,8 @@ _pure_ static inline bool job_type_is_superset(JobType a, JobType b) {
         return a == job_type_lookup_merge(a, b);
 }
 
-bool job_type_is_redundant(JobType a, UnitActiveState b) _pure_;
+bool job_later_link_matters(Job *j, JobType type, unsigned generation);
+bool job_is_redundant(Job *j, unsigned generation);
 
 /* Collapses a state-dependent job type into a simpler type by observing
  * the state of the unit which it is going to be applied to. */

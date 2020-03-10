@@ -1,5 +1,7 @@
 /* SPDX-License-Identifier: LGPL-2.1+ */
 
+#include <linux/loop.h>
+
 #include "bus-common-errors.h"
 #include "bus-error.h"
 #include "conf-files.h"
@@ -359,7 +361,7 @@ static int portable_extract_by_path(
 
         assert(path);
 
-        r = loop_device_make_by_path(path, O_RDONLY, &d);
+        r = loop_device_make_by_path(path, O_RDONLY, LO_FLAGS_PARTSCAN, &d);
         if (r == -EISDIR) {
                 /* We can't turn this into a loop-back block device, and this returns EISDIR? Then this is a directory
                  * tree and not a raw device. It's easy then. */
@@ -385,7 +387,7 @@ static int portable_extract_by_path(
                 if (r < 0)
                         return log_debug_errno(r, "Failed to create temporary directory: %m");
 
-                r = dissect_image(d->fd, NULL, 0, DISSECT_IMAGE_READ_ONLY|DISSECT_IMAGE_REQUIRE_ROOT|DISSECT_IMAGE_DISCARD_ON_LOOP, &m);
+                r = dissect_image(d->fd, NULL, 0, DISSECT_IMAGE_READ_ONLY|DISSECT_IMAGE_REQUIRE_ROOT|DISSECT_IMAGE_DISCARD_ON_LOOP|DISSECT_IMAGE_RELAX_VAR_CHECK, &m);
                 if (r == -ENOPKG)
                         sd_bus_error_setf(error, SD_BUS_ERROR_INVALID_ARGS, "Couldn't identify a suitable partition table or file system in '%s'.", path);
                 else if (r == -EADDRNOTAVAIL)
@@ -1187,7 +1189,7 @@ int portable_detach(
                 r = unit_file_lookup_state(UNIT_FILE_SYSTEM, &paths, de->d_name, &state);
                 if (r < 0)
                         return log_debug_errno(r, "Failed to determine unit file state of '%s': %m", de->d_name);
-                if (!IN_SET(state, UNIT_FILE_STATIC, UNIT_FILE_DISABLED, UNIT_FILE_LINKED, UNIT_FILE_RUNTIME))
+                if (!IN_SET(state, UNIT_FILE_STATIC, UNIT_FILE_DISABLED, UNIT_FILE_LINKED, UNIT_FILE_RUNTIME, UNIT_FILE_LINKED_RUNTIME))
                         return sd_bus_error_setf(error, BUS_ERROR_UNIT_EXISTS, "Unit file '%s' is in state '%s', can't detach.", de->d_name, unit_file_state_to_string(state));
 
                 r = unit_file_is_active(bus, de->d_name, error);

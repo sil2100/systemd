@@ -40,8 +40,6 @@ libudev_core_sources = '''
         udev-builtin-usb_id.c
         net/link-config.c
         net/link-config.h
-        net/naming-scheme.c
-        net/naming-scheme.h
 '''.split()
 
 if conf.get('HAVE_KMOD') == 1
@@ -208,5 +206,17 @@ fuzzers += [
           libsystemd_network,
           libshared],
          [threads,
-          libacl]]
+          libacl]],
+
+        [['src/udev/fido_id/fuzz-fido-id-desc.c',
+          'src/udev/fido_id/fido_id_desc.c'],
+         [],
+         []],
+        ]
+
+tests += [
+        [['src/udev/fido_id/test-fido-id-desc.c',
+          'src/udev/fido_id/fido_id_desc.c'],
+         [],
+         []],
         ]

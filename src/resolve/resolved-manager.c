@@ -14,7 +14,7 @@
 
 #include "af-list.h"
 #include "alloc-util.h"
-#include "bus-util.h"
+#include "bus-polkit.h"
 #include "dirent-util.h"
 #include "dns-domain.h"
 #include "fd-util.h"
@@ -282,6 +282,7 @@ static int on_network_event(sd_event_source *s, int fd, uint32_t revents, void *
         }
 
         (void) manager_write_resolv_conf(m);
+        (void) manager_send_changed(m, "DNS");
 
         return 0;
 }
@@ -437,6 +438,7 @@ static int make_fallback_hostnames(char **full_hostname, char **llmnr_hostname, 
 static int on_hostname_change(sd_event_source *es, int fd, uint32_t revents, void *userdata) {
         _cleanup_free_ char *full_hostname = NULL, *llmnr_hostname = NULL, *mdns_hostname = NULL;
         Manager *m = userdata;
+        bool llmnr_hostname_changed;
         int r;
 
         assert(m);
@@ -445,8 +447,9 @@ static int on_hostname_change(sd_event_source *es, int fd, uint32_t revents, voi
         if (r < 0)
                 return 0; /* ignore invalid hostnames */
 
+        llmnr_hostname_changed = !streq(llmnr_hostname, m->llmnr_hostname);
         if (streq(full_hostname, m->full_hostname) &&
-            streq(llmnr_hostname, m->llmnr_hostname) &&
+            !llmnr_hostname_changed &&
             streq(mdns_hostname, m->mdns_hostname))
                 return 0;
 
@@ -457,6 +460,7 @@ static int on_hostname_change(sd_event_source *es, int fd, uint32_t revents, voi
         free_and_replace(m->mdns_hostname, mdns_hostname);
 
         manager_refresh_rrs(m);
+        (void) manager_send_changed(m, "LLMNRHostname");
 
         return 0;
 }
@@ -1172,6 +1176,7 @@ int manager_next_hostname(Manager *m) {
         free_and_replace(m->mdns_hostname, k);
 
         manager_refresh_rrs(m);
+        (void) manager_send_changed(m, "LLMNRHostname");
 
         return 0;
 }
@@ -1461,7 +1466,6 @@ void manager_reset_server_features(Manager *m) {
 void manager_cleanup_saved_user(Manager *m) {
         _cleanup_closedir_ DIR *d = NULL;
         struct dirent *de;
-        int r;
 
         assert(m);
 
@@ -1489,8 +1493,8 @@ void manager_cleanup_saved_user(Manager *m) {
                 if (dot_or_dot_dot(de->d_name))
                         continue;
 
-                r = parse_ifindex(de->d_name, &ifindex);
-                if (r < 0) /* Probably some temporary file from a previous run. Delete it */
+                ifindex = parse_ifindex(de->d_name);
+                if (ifindex < 0) /* Probably some temporary file from a previous run. Delete it */
                         goto rm;
 
                 l = hashmap_get(m->links, INT_TO_PTR(ifindex));

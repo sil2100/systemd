@@ -25,7 +25,6 @@
 #include "io-util.h"
 #include "ioprio.h"
 #include "journal-util.h"
-#include "missing.h"
 #include "mountpoint-util.h"
 #include "namespace.h"
 #include "parse-util.h"
@@ -764,9 +763,10 @@ const sd_bus_vtable bus_exec_vtable[] = {
         SD_BUS_PROPERTY("SyslogLevel", "i", property_get_syslog_level, offsetof(ExecContext, syslog_priority), SD_BUS_VTABLE_PROPERTY_CONST),
         SD_BUS_PROPERTY("SyslogFacility", "i", property_get_syslog_facility, offsetof(ExecContext, syslog_priority), SD_BUS_VTABLE_PROPERTY_CONST),
         SD_BUS_PROPERTY("LogLevelMax", "i", bus_property_get_int, offsetof(ExecContext, log_level_max), SD_BUS_VTABLE_PROPERTY_CONST),
-        SD_BUS_PROPERTY("LogRateLimitIntervalUSec", "t", bus_property_get_usec, offsetof(ExecContext, log_rate_limit_interval_usec), SD_BUS_VTABLE_PROPERTY_CONST),
-        SD_BUS_PROPERTY("LogRateLimitBurst", "u", bus_property_get_unsigned, offsetof(ExecContext, log_rate_limit_burst), SD_BUS_VTABLE_PROPERTY_CONST),
+        SD_BUS_PROPERTY("LogRateLimitIntervalUSec", "t", bus_property_get_usec, offsetof(ExecContext, log_ratelimit_interval_usec), SD_BUS_VTABLE_PROPERTY_CONST),
+        SD_BUS_PROPERTY("LogRateLimitBurst", "u", bus_property_get_unsigned, offsetof(ExecContext, log_ratelimit_burst), SD_BUS_VTABLE_PROPERTY_CONST),
         SD_BUS_PROPERTY("LogExtraFields", "aay", property_get_log_extra_fields, 0, SD_BUS_VTABLE_PROPERTY_CONST),
+        SD_BUS_PROPERTY("LogNamespace", "s", NULL, offsetof(ExecContext, log_namespace), SD_BUS_VTABLE_PROPERTY_CONST),
         SD_BUS_PROPERTY("SecureBits", "i", bus_property_get_int, offsetof(ExecContext, secure_bits), SD_BUS_VTABLE_PROPERTY_CONST),
         SD_BUS_PROPERTY("CapabilityBoundingSet", "t", NULL, offsetof(ExecContext, capability_bounding_set), SD_BUS_VTABLE_PROPERTY_CONST),
         SD_BUS_PROPERTY("AmbientCapabilities", "t", NULL, offsetof(ExecContext, capability_ambient_set), SD_BUS_VTABLE_PROPERTY_CONST),
@@ -784,6 +784,7 @@ const sd_bus_vtable bus_exec_vtable[] = {
         SD_BUS_PROPERTY("PrivateDevices", "b", bus_property_get_bool, offsetof(ExecContext, private_devices), SD_BUS_VTABLE_PROPERTY_CONST),
         SD_BUS_PROPERTY("ProtectKernelTunables", "b", bus_property_get_bool, offsetof(ExecContext, protect_kernel_tunables), SD_BUS_VTABLE_PROPERTY_CONST),
         SD_BUS_PROPERTY("ProtectKernelModules", "b", bus_property_get_bool, offsetof(ExecContext, protect_kernel_modules), SD_BUS_VTABLE_PROPERTY_CONST),
+        SD_BUS_PROPERTY("ProtectKernelLogs", "b", bus_property_get_bool, offsetof(ExecContext, protect_kernel_logs), SD_BUS_VTABLE_PROPERTY_CONST),
         SD_BUS_PROPERTY("ProtectControlGroups", "b", bus_property_get_bool, offsetof(ExecContext, protect_control_groups), SD_BUS_VTABLE_PROPERTY_CONST),
         SD_BUS_PROPERTY("PrivateNetwork", "b", bus_property_get_bool, offsetof(ExecContext, private_network), SD_BUS_VTABLE_PROPERTY_CONST),
         SD_BUS_PROPERTY("PrivateUsers", "b", bus_property_get_bool, offsetof(ExecContext, private_users), SD_BUS_VTABLE_PROPERTY_CONST),
@@ -1095,25 +1096,31 @@ int bus_set_transient_exec_command(
                 if (!f)
                         return -ENOMEM;
 
-                fputs("ExecStart=\n", f);
+                fprintf(f, "%s=\n", name);
 
                 LIST_FOREACH(command, c, *exec_command) {
-                        _cleanup_free_ char *a = NULL, *t = NULL, *exec_chars = NULL;
-                        const char *p;
+                        _cleanup_free_ char *a = NULL, *exec_chars = NULL;
 
-                        p = unit_escape_setting(c->path, UNIT_ESCAPE_C|UNIT_ESCAPE_SPECIFIERS, &t);
-                        if (!p)
+                        exec_chars = exec_command_flags_to_exec_chars(c->flags);
+                        if (!exec_chars)
                                 return -ENOMEM;
 
                         a = unit_concat_strv(c->argv, UNIT_ESCAPE_C|UNIT_ESCAPE_SPECIFIERS);
                         if (!a)
                                 return -ENOMEM;
 
-                        exec_chars = exec_command_flags_to_exec_chars(c->flags);
-                        if (!exec_chars)
-                                return -ENOMEM;
+                        if (streq_ptr(c->path, c->argv ? c->argv[0] : NULL))
+                                fprintf(f, "%s=%s%s\n", name, exec_chars, a);
+                        else {
+                                _cleanup_free_ char *t = NULL;
+                                const char *p;
 
-                        fprintf(f, "%s=%s@%s %s\n", name, exec_chars, p, a);
+                                p = unit_escape_setting(c->path, UNIT_ESCAPE_C|UNIT_ESCAPE_SPECIFIERS, &t);
+                                if (!p)
+                                        return -ENOMEM;
+
+                                fprintf(f, "%s=%s@%s %s\n", name, exec_chars, p, a);
+                        }
                 }
 
                 r = fflush_and_check(f);
@@ -1204,10 +1211,10 @@ int bus_exec_context_set_transient_property(
                 return bus_set_transient_log_level(u, name, &c->log_level_max, message, flags, error);
 
         if (streq(name, "LogRateLimitIntervalUSec"))
-                return bus_set_transient_usec(u, name, &c->log_rate_limit_interval_usec, message, flags, error);
+                return bus_set_transient_usec(u, name, &c->log_ratelimit_interval_usec, message, flags, error);
 
         if (streq(name, "LogRateLimitBurst"))
-                return bus_set_transient_unsigned(u, name, &c->log_rate_limit_burst, message, flags, error);
+                return bus_set_transient_unsigned(u, name, &c->log_ratelimit_burst, message, flags, error);
 
         if (streq(name, "Personality"))
                 return bus_set_transient_personality(u, name, &c->personality, message, flags, error);
@@ -1274,6 +1281,12 @@ int bus_exec_context_set_transient_property(
 
         if (streq(name, "ProtectKernelModules"))
                 return bus_set_transient_bool(u, name, &c->protect_kernel_modules, message, flags, error);
+
+        if (streq(name, "ProtectKernelLogs"))
+                return bus_set_transient_bool(u, name, &c->protect_kernel_logs, message, flags, error);
+
+        if (streq(name, "ProtectClock"))
+                return bus_set_transient_bool(u, name, &c->protect_clock, message, flags, error);
 
         if (streq(name, "ProtectControlGroups"))
                 return bus_set_transient_bool(u, name, &c->protect_control_groups, message, flags, error);
@@ -1424,6 +1437,32 @@ int bus_exec_context_set_transient_property(
 
                 return 1;
 
+        } else if (streq(name, "LogNamespace")) {
+                const char *n;
+
+                r = sd_bus_message_read(message, "s", &n);
+                if (r < 0)
+                        return r;
+
+                if (!isempty(n) && !log_namespace_name_valid(n))
+                        return sd_bus_error_setf(error, SD_BUS_ERROR_INVALID_ARGS, "Log namespace name not valid");
+
+                if (!UNIT_WRITE_FLAGS_NOOP(flags)) {
+
+                        if (isempty(n)) {
+                                c->log_namespace = mfree(c->log_namespace);
+                                unit_write_settingf(u, flags, name, "%s=", name);
+                        } else {
+                                r = free_and_strdup(&c->log_namespace, n);
+                                if (r < 0)
+                                        return r;
+
+                                unit_write_settingf(u, flags, name, "%s=%s", name, n);
+                        }
+                }
+
+                return 1;
+
         } else if (streq(name, "LogExtraFields")) {
                 size_t n = 0;
 
@@ -1548,6 +1587,7 @@ int bus_exec_context_set_transient_property(
                                         r = seccomp_parse_syscall_filter("@default",
                                                                          -1,
                                                                          c->syscall_filter,
+                                                                         SECCOMP_PARSE_PERMISSIVE |
                                                                          SECCOMP_PARSE_WHITELIST | invert_flag,
                                                                          u->id,
                                                                          NULL, 0);
@@ -1567,7 +1607,9 @@ int bus_exec_context_set_transient_property(
                                 r = seccomp_parse_syscall_filter(n,
                                                                  e,
                                                                  c->syscall_filter,
-                                                                 (c->syscall_whitelist ? SECCOMP_PARSE_WHITELIST : 0) | invert_flag,
+                                                                 SECCOMP_PARSE_LOG | SECCOMP_PARSE_PERMISSIVE |
+                                                                 invert_flag |
+                                                                 (c->syscall_whitelist ? SECCOMP_PARSE_WHITELIST : 0),
                                                                  u->id,
                                                                  NULL, 0);
                                 if (r < 0)
@@ -2370,7 +2412,7 @@ int bus_exec_context_set_transient_property(
                 return 1;
 
         } else if (STR_IN_SET(name, "BindPaths", "BindReadOnlyPaths")) {
-                const char *source, *destination;
+                char *source, *destination;
                 int ignore_enoent;
                 uint64_t mount_flags;
                 bool empty = true;
@@ -2391,8 +2433,8 @@ int bus_exec_context_set_transient_property(
                         if (!UNIT_WRITE_FLAGS_NOOP(flags)) {
                                 r = bind_mount_add(&c->bind_mounts, &c->n_bind_mounts,
                                                    &(BindMount) {
-                                                           .source = strdup(source),
-                                                           .destination = strdup(destination),
+                                                           .source = source,
+                                                           .destination = destination,
                                                            .read_only = !!strstr(name, "ReadOnly"),
                                                            .recursive = !!(mount_flags & MS_REC),
                                                            .ignore_enoent = ignore_enoent,

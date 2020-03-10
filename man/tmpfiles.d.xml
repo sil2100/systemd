@@ -33,39 +33,45 @@
     <para><literallayout><filename>~/.config/user-tmpfiles.d/*.conf</filename>
 <filename>$XDG_RUNTIME_DIR/user-tmpfiles.d/*.conf</filename>
 <filename>~/.local/share/user-tmpfiles.d/*.conf</filename>
-<filename>…</filename>
+<filename index='false'>…</filename>
 <filename>/usr/share/user-tmpfiles.d/*.conf</filename>
     </literallayout></para>
 
     <programlisting>#Type Path                                     Mode User Group Age         Argument
 f     /file/to/create                          mode user group -           content
-F     /file/to/create-or-truncate              mode user group -           content
+f+    /file/to/create-or-truncate              mode user group -           content
 w     /file/to/write-to                        -    -    -     -           content
+w+    /file/to/append-to                       -    -    -     -           content
 d     /directory/to/create-and-cleanup         mode user group cleanup-age -
 D     /directory/to/create-and-remove          mode user group cleanup-age -
 e     /directory/to/cleanup                    mode user group cleanup-age -
-v     /subvolume/to/create                     mode user group -           -
 v     /subvolume-or-directory/to/create        mode user group -           -
-Q     /subvolume/to/create                     mode user group -           -
+q     /subvolume-or-directory/to/create        mode user group -           -
+Q     /subvolume-or-directory/to/create        mode user group -           -
 p     /fifo/to/create                          mode user group -           -
+p+    /fifo/to/[re]create                      mode user group -           -
 L     /symlink/to/create                       -    -    -     -           symlink/target/path
-c     /dev/char-device-to-create               mode user group -           -
-b     /dev/block-device-to-create              mode user group -           -
-# p+, L+, c+, b+ create target unconditionally
+L+    /symlink/to/[re]create                   -    -    -     -           symlink/target/path
+c     /dev/char-device-to-create               mode user group -           major:minor
+c+    /dev/char-device-to-[re]create           mode user group -           major:minor
+b     /dev/block-device-to-create              mode user group -           major:minor
+b+    /dev/block-device-to-[re]create          mode user group -           major:minor
 C     /target/to/create                        -    -    -     -           /source/to/copy
 x     /path-or-glob/to/ignore                  -    -    -     -           -
 X     /path-or-glob/to/ignore/recursively      -    -    -     -           -
 r     /empty/dir/to/remove                     -    -    -     -           -
 R     /dir/to/remove/recursively               -    -    -     -           -
-z     /path-or-glob/to/adjust/mode             mode user group -           MAC context
-Z     /path-or-glob/to/adjust/mode/recursively mode user group -           MAC context
+z     /path-or-glob/to/adjust/mode             mode user group -           -
+Z     /path-or-glob/to/adjust/mode/recursively mode user group -           -
 t     /path-or-glob/to/set/xattrs              -    -    -     -           xattrs
 T     /path-or-glob/to/set/xattrs/recursively  -    -    -     -           xattrs
 h     /path-or-glob/to/set/attrs               -    -    -     -           file attrs
 H     /path-or-glob/to/set/attrs/recursively   -    -    -     -           file attrs
 a     /path-or-glob/to/set/acls                -    -    -     -           POSIX ACLs
+a+    /path-or-glob/to/append/acls             -    -    -     -           POSIX ACLs
 A     /path-or-glob/to/set/acls/recursively    -    -    -     -           POSIX ACLs
-# a+, A+ append ACLs
+A+    /path-or-glob/to/append/acls/recursively -    -    -     -           POSIX ACLs
+
 </programlisting>
   </refsynopsisdiv>
 
@@ -88,7 +94,7 @@ A     /path-or-glob/to/set/acls/recursively    -    -    -     -           POSIX
     <filename>systemd-tmpfiles-cleanup.service</filename>, and associated units.</para>
 
     <para>System daemons frequently require private runtime directories below <filename>/run</filename> to
-    store communication sockets and similar. For these, is is better to use
+    store communication sockets and similar. For these, it is better to use
     <varname>RuntimeDirectory=</varname> in their unit files (see
     <citerefentry><refentrytitle>systemd.exec</refentrytitle><manvolnum>5</manvolnum></citerefentry> for
     details), if the flexibility provided by <filename>tmpfiles.d</filename> is not required. The advantages
@@ -155,25 +161,22 @@ L     /tmp/foobar -    -    -     -   /dev/null</programlisting>
       <variablelist>
         <varlistentry>
           <term><varname>f</varname></term>
-          <listitem><para>Create a file if it does not exist yet. If the argument parameter is given and the file did
-          not exist yet, it will be written to the file. Does not follow symlinks.</para></listitem>
-        </varlistentry>
-
-        <varlistentry>
-          <term><varname>F</varname></term>
-          <listitem><para>Create or truncate a file. If the argument
-          parameter is given, it will be written to the file. Does not follow symlinks.</para>
-          </listitem>
+          <term><varname>f+</varname></term>
+          <listitem><para><varname>f</varname> will create a file if it does not exist yet. If the argument
+          parameter is given and the file did not exist yet, it will be written to the file.
+          <varname>f+</varname> will create or truncate the file. If the argument parameter is given, it will
+          be written to the file. Does not follow symlinks.</para></listitem>
         </varlistentry>
 
         <varlistentry>
           <term><varname>w</varname></term>
-          <listitem><para>Write the argument parameter to a file, if
-          the file exists.  Lines of this type accept shell-style
-          globs in place of normal path names. The argument parameter
-          will be written without a trailing newline. C-style
-          backslash escapes are interpreted. Follows
-          symlinks.</para></listitem>
+          <term><varname>w+</varname></term>
+          <listitem><para>Write the argument parameter to a file, if the file exists.
+          If suffixed with <varname>+</varname>, the line will be appended to the file.
+          If your configuration writes multiple lines to the same file, use <varname>w+</varname>.
+          Lines of this type accept shell-style globs in place of normal path names.
+          The argument parameter will be written without a trailing newline.
+          C-style backslash escapes are interpreted. Follows symlinks.</para></listitem>
         </varlistentry>
 
         <varlistentry>
@@ -532,7 +535,7 @@ w- /proc/sys/vm/swappiness - - - - 10</programlisting></para>
       guaranteed to be resolvable during early boot. If this field references users/groups that only become
       resolveable during later boot (i.e. after NIS, LDAP or a similar networked directory service become
       available), execution of the operations declared by the line will likely fail. Also see <ulink
-      url="https://systemd.io/UIDS-GIDS.html#notes-on-resolvability-of-user-and-group-names">Notes on
+      url="https://systemd.io/UIDS-GIDS/#notes-on-resolvability-of-user-and-group-names">Notes on
       Resolvability of User and Group Names</ulink> for more information on requirements on system user/group
       definitions.</para>
     </refsect2>
@@ -651,7 +654,7 @@ w- /proc/sys/vm/swappiness - - - - 10</programlisting></para>
             <row>
               <entry><literal>%L</literal></entry>
               <entry>System or user log directory</entry>
-              <entry>In <option>--user</option> mode, this is the same as <varname>$XDG_CONFIG_HOME</varname> with <filename noindex='true'>/log</filename> appended, and <filename>/var/log</filename> otherwise.</entry>
+              <entry>In <option>--user</option> mode, this is the same as <varname>$XDG_CONFIG_HOME</varname> with <filename index="false">/log</filename> appended, and <filename>/var/log</filename> otherwise.</entry>
             </row>
             <row>
               <entry><literal>%m</literal></entry>

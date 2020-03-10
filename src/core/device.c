@@ -116,7 +116,7 @@ static void device_done(Unit *u) {
 static int device_load(Unit *u) {
         int r;
 
-        r = unit_load_fragment_and_dropin_optional(u);
+        r = unit_load_fragment_and_dropin(u, false);
         if (r < 0)
                 return r;
 
@@ -1064,6 +1064,7 @@ const UnitVTable device_vtable = {
                 "Device\0"
                 "Install\0",
 
+        .refuse_after = true,
         .gc_jobs = true,
 
         .init = device_init,
