@@ -1638,28 +1638,16 @@ bool link_has_carrier(Link *link) {
         return false;
 }
 
-bool link_should_activate(Link *link) {
+int link_should_activate(Link *link) {
         assert(link);
 
-        if (!link->network)
-                return true;
+        if (!link->network || link->network->activation_mode == ACTIVATION_MODE_MANUAL)
+                return -1;
 
         if (link->network->activation_mode == ACTIVATION_MODE_OFF)
-                return false;
+                return 0;
 
-        return true;
-}
-
-bool link_is_manual(Link *link) {
-        assert(link);
-
-        if (!link->network)
-                return false;
-
-        if (link->network->activation_mode == ACTIVATION_MODE_MANUAL)
-                return true;
-
-        return false;
+        return 1;
 }
 
 static int link_address_genmode_handler(sd_netlink *rtnl, sd_netlink_message *m, Link *link) {
@@ -1866,11 +1854,11 @@ static int link_handle_bound_to_list(Link *link) {
 
         HASHMAP_FOREACH (l, link->bound_to_links, i)
                 if (link_has_carrier(l)) {
-                        required_up = link_should_activate(link);
+                        required_up = true;
                         break;
                 }
 
-        if (link_is_manual(link))
+        if (link_should_activate(link) < 0)
                 return 0;
 
         if (!required_up && link_is_up) {
@@ -2159,7 +2147,7 @@ static int link_joined(Link *link) {
         assert(link);
         assert(link->network);
 
-        if (!link_should_activate(link)) {
+        if (link_should_activate(link) == 0) {
                 log_link_debug(link, "shutting down link as requested by configuration");
                 r = link_down(link, NULL);
                 if (r < 0)
@@ -2171,7 +2159,7 @@ static int link_joined(Link *link) {
                 r = link_handle_bound_to_list(link);
                 if (r < 0)
                         return r;
-        } else if (link_should_activate(link) && !link_is_manual(link) && !(link->flags & IFF_UP)) {
+        } else if (link_should_activate(link) > 0 && !(link->flags & IFF_UP)) {
                 r = link_up(link);
                 if (r < 0) {
                         link_enter_failed(link);
@@ -2957,7 +2945,7 @@ static int link_configure_continue(Link *link) {
         if (r < 0)
                 return r;
 
-        if (link_should_activate(link) && (link_has_carrier(link) || link->network->configure_without_carrier)) {
+        if (link_should_activate(link) > 0 && (link_has_carrier(link) || link->network->configure_without_carrier)) {
                 r = link_acquire_conf(link);
                 if (r < 0)
                         return r;
@@ -3656,7 +3644,7 @@ static int link_carrier_gained(Link *link) {
         }
 
         if (IN_SET(link->state, LINK_STATE_CONFIGURING, LINK_STATE_CONFIGURED)) {
-                if (!link_should_activate(link)) {
+                if (link_should_activate(link) == 0) {
                         r = link_down(link, NULL);
                         if (r < 0) {
                                 link_enter_failed(link);
@@ -3726,7 +3714,7 @@ static int link_carrier_lost(Link *link) {
          * outside systemd-networkd, but set ActivationMode=on. Try to bring
          * the link up again in case it's not really a carrier change.
          */
-        if (link_should_activate(link) && !link_is_manual(link)) {
+        if (link_should_activate(link) > 0) {
                 log_link_debug(link, "bringing up link as requested by configuration");
                 r = link_up(link);
                 if (r < 0)

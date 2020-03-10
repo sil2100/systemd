@@ -42,9 +42,9 @@ typedef enum IPv6PrivacyExtensions {
 } IPv6PrivacyExtensions;
 
 typedef enum ActivationMode {
-        ACTIVATION_MODE_OFF = 0,
-        ACTIVATION_MODE_ON = 1,
-        ACTIVATION_MODE_MANUAL = 2,
+        ACTIVATION_MODE_OFF,
+        ACTIVATION_MODE_ON,
+        ACTIVATION_MODE_MANUAL,
         _ACTIVATION_MODE_MAX,
         _ACTIVATION_MODE_INVALID = -1,
 } ActivationMode;
